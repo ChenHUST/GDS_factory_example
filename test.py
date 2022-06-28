@@ -40,7 +40,7 @@ wg_cross_section = gf.CrossSection(
 
 
 @gf.cell
-def gt_my(wg_width=0.5, st_length=12000.0, taper_length=300.0):
+def gt_rec(wg_width=0.5, st_length=12000.0, taper_length=300.0):
     wg_cross_section = gf.CrossSection(
         radius=50,
         width=wg_width,
@@ -93,29 +93,88 @@ def gt_my(wg_width=0.5, st_length=12000.0, taper_length=300.0):
     return gt_sample
 
 
-c = gf.components.grating_coupler_elliptical(
-    polarization="te",
-    taper_length=20,
-    taper_angle=40.0,
-    wavelength=1.554,
-    fiber_angle=16.8652,
-    grating_line_width=0.3686,
-    neff=2.638,
-    nclad=1.443,
-    n_periods=30,
-    big_last_tooth=False,
-    layer_slab="SLAB150",
-    slab_xmin=-1.0,
-    slab_offset=2.0,
-    fiber_marker_width=4.4,
-    fiber_marker_layer="TE",
-    spiked=True,
-    cross_section="strip",
-)
+@gf.cell
+def gt_focus(pitch=0.6887, dutycycle=0.53522, wg_width=0.5, st_length=12000.0):
+    gt_sample = gf.Component()
+    wgt = WaveguideTemplate(
+        wg_width=wg_width,
+        clad_width=3.0,
+        bend_radius=50.0,
+        resist="+",
+        fab="ETCH",
+        wg_layer=gf.LAYER.WG[0],
+        wg_datatype=0,
+        clad_layer=gf.LAYER.WGCLAD[0],
+        clad_datatype=0,
+    )
+    wg_cross_section = gf.CrossSection(
+        radius=50,
+        width=wg_width,
+        offset=0,
+        layer=gf.LAYER.WG,
+        cladding_layers=gf.LAYER.WGCLAD,
+        cladding_offsets=(3.0,),
+        name="wg",
+        port_names=("o1", "o2"),
+    )
+    gt_foc_1 = pc.GratingCoupler(
+        wgt=wgt,
+        theta=np.pi / 6,
+        taper_length=25,
+        length=50,
+        period=0.6887,
+        ridge=False,
+        dutycycle=0.53522,
+    )
+    gt_foc_2 = gf.read.from_picwriter(gt_foc_1)
+    gt_foc_t = gf.geometry.boolean(
+        gt_foc_2.extract(layers=gf.LAYER.WGCLAD),
+        gt_foc_2.extract(layers=gf.LAYER.WG),
+        "A-B",
+        layer=(0, 0),
+    )
+
+    right_gt_ref = gt_sample << gt_foc_t
+    left_gt = gt_foc_t.mirror()
+    left_gt_ref = gt_sample << left_gt
+    right_gt_ref.movex(destination=(st_length) / 2)
+    left_gt_ref.movex(destination=-(st_length) / 2)
+    st1 = gf.components.straight(length=st_length, cross_section=wg_cross_section)
+    st1_ref = gt_sample << gf.geometry.boolean(
+        st1.extract(layers=gf.LAYER.WGCLAD),
+        st1.extract(layers=gf.LAYER.WG),
+        operation="A-B",
+        layer=(0, 0),
+    )
+    st1_ref.movex(destination=-(st_length) / 2)
+    return gt_sample
 
 
-# c = gf.components.grating_coupler_loss_fiber_single(
-#     grating_coupler=c, cross_section="strip"
+# c = gf.components.grating_coupler_elliptical_arbitrary(
+#     gaps=(0.32, 0.32) * 10,
+#     widths=(0.3686, 0.3686) * 10,
+#     taper_length=25,
+#     taper_angle=50.0,
+#     wavelength=0.785,
+#     fiber_angle=16.8652,
+#     neff=1,
+#     nclad=1,
+#     layer_slab="SLAB150",
+#     slab_xmin=-25.0,
+#     polarization="te",
+#     fiber_marker_width=4.4,
+#     fiber_marker_layer="TE",
+#     spiked=True,
+#     bias_gap=0,
+#     cross_section=wg_cross_section,
 # )
+# c_in = c.extract(layers=gf.LAYER.WG)
+# c = gf.components.grating_coupler_loss_fiber_single(
+#     grating_coupler=c, cross_section=wg_cross_section, min_input_to_output_spacing=10000
+# )
+positive = gf.Component("top")
+positive << gt_focus()
 
-c.show()
+positive.show()
+positive.write_gds("test.gds")
+gdspy.LayoutViewer(cells=positive)

@@ -4,6 +4,10 @@ _summary_
 主要使用package: gdspy, picwriter, gdsfactory
 本版本主要使用picwriter
 以后主要使用gdsfactory(功能最全)
+layer层定义：
+(0, 0):layer中为最终的layer层
+gf.LAYER.WG 负胶波导层定义
+gf.LAYER.WGCLAD 负胶cladding层定义->用于
 目的:
     1. 根据加工和观察确定->加工尺寸和波导宽度的关系
     2. 加工三条长度不同的结构->确定波导损耗
@@ -70,8 +74,12 @@ def cross_marker(
     return c
 
 
+# 矩形光栅制作
 @gf.cell
 def gt_my(wg_width=0.5, st_length=12000.0, taper_length=300.0):
+    """
+    使用gdsfactory中的矩形光栅制作
+    """
     wg_cross_section = gf.CrossSection(
         radius=50,
         width=wg_width,
@@ -124,9 +132,70 @@ def gt_my(wg_width=0.5, st_length=12000.0, taper_length=300.0):
     return gt_sample
 
 
+# 聚焦光栅
+@gf.cell
+def gt_focus(pitch=0.6887, dutycycle=0.53522, wg_width=0.5, st_length=12000.0):
+    """
+    借用picwriter中的grating coupler类，其余使用gdsfactory包
+    """
+    gt_sample = gf.Component()
+    wgt = WaveguideTemplate(
+        wg_width=wg_width,
+        clad_width=3.0,
+        bend_radius=50.0,
+        resist="+",
+        fab="ETCH",
+        wg_layer=gf.LAYER.WG[0],
+        wg_datatype=0,
+        clad_layer=gf.LAYER.WGCLAD[0],
+        clad_datatype=0,
+    )
+    wg_cross_section = gf.CrossSection(
+        radius=50,
+        width=wg_width,
+        offset=0,
+        layer=gf.LAYER.WG,
+        cladding_layers=gf.LAYER.WGCLAD,
+        cladding_offsets=(3.0,),
+        name="wg",
+        port_names=("o1", "o2"),
+    )
+    gt_foc_1 = pc.GratingCoupler(
+        wgt=wgt,
+        theta=np.pi / 6,
+        taper_length=25,
+        length=50,
+        period=0.6887,
+        ridge=False,
+        dutycycle=0.53522,
+    )
+    gt_foc_2 = gf.read.from_picwriter(gt_foc_1)
+    gt_foc_t = gf.geometry.boolean(
+        gt_foc_2.extract(layers=gf.LAYER.WGCLAD),
+        gt_foc_2.extract(layers=gf.LAYER.WG),
+        "A-B",
+        layer=(0, 0),
+    )
+
+    right_gt_ref = gt_sample << gt_foc_t
+    left_gt = gt_foc_t.mirror()
+    left_gt_ref = gt_sample << left_gt
+    right_gt_ref.movex(destination=(st_length) / 2)
+    left_gt_ref.movex(destination=-(st_length) / 2)
+    st1 = gf.components.straight(length=st_length, cross_section=wg_cross_section)
+    st1_ref = gt_sample << gf.geometry.boolean(
+        st1.extract(layers=gf.LAYER.WGCLAD),
+        st1.extract(layers=gf.LAYER.WG),
+        operation="A-B",
+        layer=(0, 0),
+    )
+    st1_ref.movex(destination=-(st_length) / 2)
+    return gt_sample
+
+
 # 创建gds文件
 # 默认单位为1um，精度为1nm
-# 晶圆大小为15000um宽 X 25000um长 (1.5cm X 2.5cm)
+# 晶圆大小为15000um宽 X 15000um长 (1.5cm X 1.5cm)
 # 考虑划片机误差(5um)以及deep trench工艺(5um左右)，实际使用宽14990um
 waveguide = gdspy.GdsLibrary()
 # posutive resist example
@@ -135,7 +204,7 @@ waveguide = gdspy.GdsLibrary()
 # 设置相关尺寸参数
 width = 0.46  # 起始波导宽度
 small_margin = 3.0  # 波导刻蚀两边宽度
-big_margin = 5.0
+big_margin = 5.0  # 设置taper_in_out波导刻蚀两边的宽度
 (die_length, die_width) = (15000.0, 15000.0)  # die长度和宽度
 (street_width, street_length) = (100.0, 1000.0)  # die切割的宽度和长度预留
 lito_taper_length = 10.0  # 预留端部光刻长度
@@ -162,6 +231,7 @@ small_text_size = 30.0
 die_text_size = 500  # die字体大小
 
 # layer层定义
+# !后续的layer层定义改为和gdsfactory中相同
 wg_layer = 1  # 波导层定义
 text_layer = 3  # 字体层定义
 bbox_layer = 4  # die_box层定义
@@ -180,7 +250,7 @@ waveguide_temp = {}
 taper_temp = {}
 text_temp = {}
 
-# 切割die定义
+########################### 切割die定义 ##########################
 # die.center=(0, 0)
 die = gf.components.die(
     size=(die_length, die_width),
@@ -193,11 +263,13 @@ die = gf.components.die(
     bbox_layer=bbox_layer,
     draw_dicing_lane=True,
 )
-tk.add(positive, die)
+positive << die
+##################################################################
 
+
+########################### 尺寸测试光栅 ##########################
 # 0.1-0.9um宽度的waveguide
 s_1 = []
-# center_1 = [-(total_width / 2) + 100, -(total_width / 2) + 100]
 center_1 = [0, -(total_width / 2) + 100]
 P1 = gf.Path((center_1, (center_1[0] + 1000, center_1[1])))
 for i in range(41):
@@ -281,7 +353,14 @@ grating_2_text_positive = gf.components.text(
 positive.add_ref(grating_2_positive)
 positive.add_ref(grating_2_text_positive)
 
+#######################################################################
+
+
+########################### 六组螺旋线 #################################
 for j in range(6):
+    # 六组不同的参数
+    # !后续可以将每组螺旋线包装成函数
+    # !这里使用是gdspy包中给的函数，后续可以改为gf.component.straight()
     width = width + width_gap
     small_margin = small_margin + width_gap
     big_margin = big_margin + width_gap
@@ -334,6 +413,8 @@ for j in range(6):
     waveguide_temp[j] = gdspy.Cell("waveguide_temp_% d" % j)
     taper_temp[j] = gdspy.Cell("taper_temp_% d" % j)
     text_temp[j] = gdspy.Cell("text_temp_% d" % j)
+
+    ########################### 每组三条螺旋线 #############################
 
     for i in range(1, 4):
         # 只允许螺旋线水平增加，垂直方向长度和圆角个数不变
@@ -430,24 +511,27 @@ for j in range(6):
     tk.add(waveguide_temp_array, waveguide_temp[j])
     tk.add(text_temp_array, text_temp[j])
 
-# 最后向gds文件中添加顶部的cell
-tk.add(positive, three_spiral_array)
-tk.add(positive, taper_temp_array)
-tk.add(positive, waveguide_temp_array)
-tk.add(positive, text_temp_array)
+#######################################################################
 
-positive.add_ref(
-    cross_marker(
-        cl_position=(-(total_length / 2) + 500, -(total_width / 2) + 500),
-        cr_position=((total_length / 2) - 500, (total_width / 2) - 500),
-    )
+
+########################### 添加cell并写入 #################################
+# 最后向positive顶部的cell中添加上面定义的cell
+positive << three_spiral_array
+positive << taper_temp_array
+positive << waveguide_temp_array
+positive << text_temp_array
+
+positive << cross_marker(
+    cl_position=(-(total_length / 2) + 500, -(total_width / 2) + 500),
+    cr_position=((total_length / 2) - 500, (total_width / 2) - 500),
 )
 
-
-gt_my_temp = gt_my()
+gt_my_temp = gt_focus()
 gt_my_temp_ref = positive << gt_my_temp
-gt_my_temp_ref.move(destination=(-6000, 5800))
+gt_my_temp_ref.move(destination=(0, 5800))
 waveguide.add(positive)
 
 waveguide.write_gds("waveguide_v2.gds")
 gdspy.LayoutViewer(cells=positive)
+
+#######################################################################
