@@ -172,9 +172,40 @@ def gt_focus(pitch=0.6887, dutycycle=0.53522, wg_width=0.5, st_length=12000.0):
 # c = gf.components.grating_coupler_loss_fiber_single(
 #     grating_coupler=c, cross_section=wg_cross_section, min_input_to_output_spacing=10000
 # )
-positive = gf.Component("top")
-positive << gt_focus()
-
-positive.show()
-positive.write_gds("test.gds")
-gdspy.LayoutViewer(cells=positive)
+# wgt = WaveguideTemplate(
+#     wg_width=0.5,
+#     clad_width=3,
+#     bend_radius=50,
+#     resist="+",
+#     fab="ETCH",
+#     wg_layer=gf.LAYER.WG[0],
+#     wg_datatype=0,
+#     clad_layer=gf.LAYER.WGCLAD[0],
+#     clad_datatype=0,
+# )
+# wg_cross_section = gf.CrossSection(
+#     radius=50,
+#     width=wg_width,
+#     offset=0,
+#     layer=gf.LAYER.WG,
+#     cladding_layers=gf.LAYER.WGCLAD,
+#     cladding_offsets=(3.0,),
+#     name="wg",
+#     port_names=("o1", "o2"),
+# )
+# st1 = gf.components.straight(length=100, cross_section=wg_cross_section)
+# positive = gf.Component("top")
+# positive << st1
+c = gf.Component("ding0628")
+d = gf.Component("ding0629")
+c1 = c << gf.components.circle(radius=10, layer=(1, 0))
+r1 = c << gf.components.rectangle(size=[20, 8], layer=(1, 0))
+r1.move([100, -4])
+ta1 = c << gf.components.taper(length=40, width1=15, width2=8, port=None, layer=(1, 0))
+ta1.move([20, 10])
+gf.functions.extract()
+t = d << gf.geometry.boolean([c1, r1], operation="A+B", layer=(1, 0))
+d.show()
+# positive.show()
+# positive.write_gds("test.gds")
+# gdspy.LayoutViewer(cells=positive)
