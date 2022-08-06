@@ -19,7 +19,7 @@ gf.LAYER.TEXT
  * @Author: wenyu chen
  * @Date: 2022-06-01 15:29:12 
  * @Last Modified by: wenyu chen
- * @Last Modified time: 2022-06-29 15:29:33
+ * @Last Modified time: 2022-07-06 15:29:33
 """
 
 from audioop import add, cross
@@ -41,11 +41,12 @@ from picwriter import toolkit as tk
 from picwriter.components.waveguide import WaveguideTemplate, Waveguide
 import picwriter.components as pc
 from pyrsistent import s
+import sys
 
 # cross_marker标记制作
 @gf.cell
 def cross_marker(
-    width=5, length=500, cl_position=(0, 0), cr_position=(0, 0)
+    width=10, length=1000, cl_position=(0, 0), cr_position=(0, 0)
 ) -> Component:
     c = gf.Component("marker")
     points_1 = np.array(
@@ -132,9 +133,11 @@ def gt_my(wg_width=0.5, st_length=12000.0, taper_length=300.0):
     return gt_sample
 
 
-# 聚焦光栅
+# 聚焦光栅带有直波导
 @gf.cell
-def gt_focus_st(pitch=0.6887, dutycycle=0.53522, wg_width=0.5, st_length=12000.0):
+def gt_focus_st(
+    pitch=0.6887, dutycycle=0.53, wg_width=0.5, st_length=12000.0, t_size=60, g_id=1
+):
     """
     借用picwriter中的grating coupler类，其余使用gdsfactory包
     """
@@ -176,10 +179,23 @@ def gt_focus_st(pitch=0.6887, dutycycle=0.53522, wg_width=0.5, st_length=12000.0
         "A-B",
         layer=(0, 0),
     )
-
+    gt_text_r = gf.components.text(
+        "%d dc: %2s" % (g_id, dutycycle),
+        t_size,
+        (-500 + st_length / 2, 50),
+        layer=gf.LAYER.TEXT,
+    )
+    gt_text_l = gf.components.text(
+        "%d dc: %2s" % (g_id, dutycycle),
+        t_size,
+        (100 - st_length / 2, 50),
+        layer=gf.LAYER.TEXT,
+    )
     right_gt_ref = gt_sample << gt_foc_t
     left_gt = gt_foc_t.mirror()
     left_gt_ref = gt_sample << left_gt
+    gt_sample << gt_text_r
+    gt_sample << gt_text_l
     right_gt_ref.movex(destination=(st_length) / 2)
     left_gt_ref.movex(destination=-(st_length) / 2)
     st1 = gf.components.straight(length=st_length, cross_section=wg_cross_section)
@@ -194,7 +210,7 @@ def gt_focus_st(pitch=0.6887, dutycycle=0.53522, wg_width=0.5, st_length=12000.0
 
 
 @gf.cell
-def gt_focus(pitch=0.6887, dutycycle=0.53522, wg_width=0.5):
+def gt_focus(pitch=0.6887, dutycycle=0.53, wg_width=0.5):
     """
     借用picwriter中的grating coupler类，其余使用gdsfactory包
     """
@@ -229,7 +245,7 @@ def gt_focus(pitch=0.6887, dutycycle=0.53522, wg_width=0.5):
 @gf.cell
 def three_spiral(
     wg_width=0.5,
-    st_length=10000,
+    st_length=12000,
     io_gap=500,
     pitch=0.6887,
     dutycycle=0.53522,
@@ -258,6 +274,7 @@ def three_spiral(
         clad_datatype=0,
     )
     gtr1 = gt_focus(pitch, dutycycle, wg_width)
+
     gtl1 = gtr1.mirror()
     st1 = gf.components.straight(length=st_length, cross_section=wg_cross_section)
     gtr1_ref = t_spiral << gtr1
@@ -273,7 +290,21 @@ def three_spiral(
         position=(100, text_size),
         layer=gf.LAYER.TEXT,
     )
+    gt_text_r = gf.components.text(
+        "%d dc: %2s" % (group_id, dutycycle),
+        text_size,
+        (-500 + st_length / 2, text_size),
+        layer=gf.LAYER.TEXT,
+    )
+    gt_text_l = gf.components.text(
+        "%d dc: %2s" % (group_id, dutycycle),
+        text_size,
+        (100 - st_length / 2, text_size),
+        layer=gf.LAYER.TEXT,
+    )
     t_spiral << st1_t1
+    t_spiral << gt_text_r
+    t_spiral << gt_text_l
     # 三组螺旋线设置
     for i in range(1, 4):
         # 只允许螺旋线水平增加，垂直方向长度和圆角个数不变
@@ -319,7 +350,21 @@ def three_spiral(
             position=(100, port_y + text_size),
             layer=gf.LAYER.TEXT,
         )
+        t_text_r = gf.components.text(
+            "%d dc: %2s" % (group_id, dutycycle),
+            text_size,
+            (-500 + st_length / 2, port_y + text_size),
+            layer=gf.LAYER.TEXT,
+        )
+        t_text_l = gf.components.text(
+            "%d dc: %2s" % (group_id, dutycycle),
+            text_size,
+            (100 - st_length / 2, port_y + text_size),
+            layer=gf.LAYER.TEXT,
+        )
         t_spiral << text_1
+        t_spiral << t_text_r
+        t_spiral << t_text_l
 
     t_spiral_p = gf.geometry.boolean(
         t_spiral.extract(layers=gf.LAYER.WGCLAD),
@@ -347,7 +392,7 @@ width = 0.46  # 起始波导宽度
 small_margin = 3.0  # 波导刻蚀两边宽度
 big_margin = 5.0  # 设置taper_in_out波导刻蚀两边的宽度
 pitch = 0.6887
-dutycycle = 0.53522
+# dutycycle = 0.53522   # 在FDTD中仿真后的最佳占空比
 (die_length, die_width) = (15000.0, 15000.0)  # die长度和宽度
 (street_width, street_length) = (100.0, 1000.0)  # die切割的宽度和长度预留
 lito_taper_length = 10.0  # 预留端部光刻长度
@@ -364,6 +409,8 @@ spiral_length_gap = spiral_length  # 3组螺旋线长度的gap
 io_gap_y = 500.0  # 波导y方向间距
 group_gap = 4 * io_gap_y  # 组间y方向间距
 width_gap = 0.020  # 波导间距
+duty_start = 0.5  # grating coupler起始占空比
+duty_gap = 0.01  # grating coupler占空比间隔
 width = width - width_gap  # 重新调整波导和taper的宽度
 text_size = 60.0  # 字体大小
 small_text_size = 30.0
@@ -483,7 +530,10 @@ positive.add_ref(grating_2_text_positive)
 
 for i in range(6):
     width = width + width_gap
-    t_spiral_ref = positive << three_spiral(wg_width=width, group_id=(i + 1))
+    duty_start = duty_start + duty_gap
+    t_spiral_ref = positive << three_spiral(
+        wg_width=width, group_id=(i + 1), dutycycle=duty_start
+    )
     t_spiral_ref.movey(group_gap * i - 3 * group_gap)
 
 positive << cross_marker(
@@ -492,7 +542,11 @@ positive << cross_marker(
 )
 positive.show()
 
+
 positive.write_gds("waveguide_v3.gds")
 gdspy.LayoutViewer(cells=positive)
 
 ########################## 添加cell并写入 #########################
+
+wg_2_PEISL = positive.extract(layers=[(0, 0), (66, 0)])
+wg_2_PEISL.write_gds("wg_2_PEISL.gds")
