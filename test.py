@@ -14,7 +14,7 @@ from operator import gt
 from re import T
 from shutil import move
 from turtle import distance, pos, right, width
-from unicodedata import name
+from unicodedata import mirrored, name
 from matplotlib import markers
 from matplotlib.pyplot import text
 import numpy as np
@@ -27,3 +27,7 @@ import picwriter.components as pc
 from pyrsistent import s
 import sys
 import PISL_PDK
+
+
+mzi_test = PISL_PDK.mzi_oneside()
+mzi_test.show()
