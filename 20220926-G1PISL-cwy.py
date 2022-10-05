@@ -1,9 +1,9 @@
-""""
+"""
 /* Grating coupler耦合效率及波导损耗测试
  * @Author: wenyuchen 
  * @Date: 2022-09-09 09:03:45 
  * @Last Modified by: wenyuchen
- * @Last Modified time: 2022-09-26 14:26:37
+ * @Last Modified time: 2022-10-04 19:01:35
  *
  
 """
@@ -44,18 +44,18 @@ gap_off = -0.075
 duty_cycle_off = +0.08
 pitch_off = 0.005
 
-# 工艺设计值c/c
-wg_width = 0.5  # 波导宽c/c度
-clad_width = 3.0  # 波c/c导刻蚀两边宽度
-dc_gap = 0.2  # 定向c/c耦合器gap宽度
-pitch = 0.707  # gc/crating_coupler 周期
+# 工艺设计值
+wg_width = 0.5  # 波导宽度
+clad_width = 3.0  # 波导刻蚀两边宽度
+dc_gap = 0.2  # 定向耦合器gap宽度
+pitch = 0.707  # grating_coupler 周期
 duty_cycle = 0.528  # grating_coupler 占空比
 period_number = 20  # grating_coupler 周期数
 gt_radius = 15  # grating_coupler taper长度
 alpha = np.pi / 7.2  # grating_coupler 扇形角度
 total_length = 3500  # 中间波导总长（确定可以容纳两边光纤阵列）
 
-bend_radius = 50.0  # 螺c/c旋线弯曲半径
+bend_radius = 50.0  # 螺旋线弯曲半径
 origin_point = (0, 0)  # origin_point[0], origin_point[1]
 spiral_spacing_length = 500.0  # 起始螺旋线横向长度
 spiral_length = 6000.0  # 起始螺旋线长度
@@ -72,7 +72,7 @@ dc_gap = dc_gap + gap_off
 duty_cycle = duty_cycle + duty_cycle_off
 pitch = pitch
 
-###c/c################### photonic integrated circuits 参数定义 ##########################
+###################### photonic integrated circuits 参数定义 ##########################
 
 G1PISL = gf.Component("G1PISL")
 

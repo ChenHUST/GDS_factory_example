@@ -7,6 +7,7 @@
 """
 from audioop import add, cross
 from base64 import standard_b64decode
+from cgi import test
 from cgitb import small
 from dis import dis
 from msilib.schema import Component
@@ -28,6 +29,37 @@ from pyrsistent import s
 import sys
 import PISL_PDK
 
+wg_cross_section = gf.CrossSection(
+    radius=30,
+    width=0.5,
+    offset=0,
+    layer=gf.LAYER.WG,
+    cladding_layers=gf.LAYER.WGCLAD,
+    cladding_offsets=(3,),
+    name="wg",
+    port_names=("o1", "o2"),
+)
+wgt = WaveguideTemplate(
+    wg_width=0.5,
+    clad_width=3,
+    bend_radius=30,
+    resist="+",
+    fab="ETCH",
+    wg_layer=gf.LAYER.WG[0],
+    wg_datatype=0,
+    clad_layer=gf.LAYER.WGCLAD[0],
+    clad_datatype=0,
+)
 
-mzi_test = PISL_PDK.mzi_oneside()
-mzi_test.show()
+spiral_temp = pc.Spiral(
+    wgt=wgt,
+    width=300,
+    length=3000,
+    parity=1,
+    port=(0, 0),
+    direction="WEST",
+)
+gf_spiral_t = gf.read.from_picwriter(spiral_temp)
+
+# c1 = gf.components.bend_circular(angle=90, cross_section=wg_cross_section)
+gf_spiral_t.show()

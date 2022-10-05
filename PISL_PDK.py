@@ -11,7 +11,7 @@ layer层定义:
  * @Author: wenyuchen
  * @Date: 2022-09-06 15:58:05 
  * @Last Modified by: wenyuchen
- * @Last Modified time: 2022-09-26 14:56:42
+ * @Last Modified time: 2022-10-04 20:37:35
  */
 """
 
@@ -166,12 +166,6 @@ def rec_gc(
     st1_ref = gt_sample << st1
     right_gt_ref.connect(port="o1", destination=st1_ref.ports["o2"])
     left_gt_ref.connect(port="o1", destination=st1_ref.ports["o1"])
-    gt_sample << gf.geometry.boolean(
-        gt_sample.extract(layers=gf.LAYER.WGCLAD),
-        gt_sample.extract(layers=(gf.LAYER.WG, gf.LAYER.PORT)),
-        operation="A-B",
-        layer=(0, 0),
-    )
     return gt_sample
 
 
@@ -225,12 +219,6 @@ def gt_focus(
     gt_foc_2 = gf.read.from_picwriter(gt_foc_1)
     gt_sample << gt_foc_2
     gt_sample.add_port("o1", port=gt_foc_2.ports["o1"])
-    gt_sample << gf.geometry.boolean(
-        gt_sample.extract(layers=gf.LAYER.WGCLAD),
-        gt_sample.extract(layers=(gf.LAYER.WG, gf.LAYER.PORT)),
-        operation="A-B",
-        layer=(0, 0),
-    )
     return gt_sample
 
 
@@ -318,12 +306,6 @@ def gt_focus_st(
     st1 = gf.components.straight(length=st_length, cross_section=wg_cross_section)
     st1_ref = gt_sample << st1
     st1_ref.movex(destination=-(st_length) / 2)
-    gt_sample << gf.geometry.boolean(
-        gt_sample.extract(layers=gf.LAYER.WGCLAD),
-        gt_sample.extract(layers=(gf.LAYER.WG, gf.LAYER.PORT)),
-        operation="A-B",
-        layer=(0, 0),
-    )
     return gt_sample
 
 
@@ -487,15 +469,168 @@ def spiral_group(
         t_spiral << text_1
         t_spiral << t_text_r
         t_spiral << t_text_l
+    return t_spiral
 
-    t_spiral_p = gf.geometry.boolean(
-        t_spiral.extract(layers=gf.LAYER.WGCLAD),
-        t_spiral.extract(layers=gf.LAYER.WG),
-        "A-B",
-        max_points=199,
-        layer=(0, 0),
+
+# 两组螺旋线和一条直波导
+@gf.cell
+def spiral_group_oneside(
+    wg_width=0.5,
+    clad_width=3,
+    st_length=50,
+    radius=30,
+    pitch=0.707,
+    duty=0.528,
+    alpha=np.pi / 7.2,
+    gt_radius=15,
+    period_num=20,
+    io_gap=250,
+    t_size=40,
+    spiral_spacing_length=300,
+    spiral_length=3000,
+    spiral_num=2,
+    group_id=1,
+) -> Component:
+    """
+    spiral_group --> 两组螺旋线结构和一组直线两边带gt_focus
+
+    Args:
+        wg_width (float, optional): 波导宽度. Defaults to 0.5.
+        clad_width (int, optional): 波导两边宽度. Defaults to 3.
+        bend_radius (int, optional): 螺旋线弯曲半径. Defaults to 50.
+        st_length (float, optional): 总长. Defaults to 3000.0.
+        pitch (float, optional): 光栅周期pitch. Defaults to 0.707.
+        duty (float, optional): 占空比. Defaults to 0.528.
+        alpha (_type_, optional): 光栅扇形角度. Defaults to np.pi/7.2.
+        radius (int, optional): 光栅起始半径（与光栅起始宽度有关）. Defaults to 15.
+        period_num (int, optional): 光栅周期数. Defaults to 20.
+        io_gap (int, optional): 螺旋线上下间距. Defaults to 250.
+        group_id (int, optional): 组号(text层). Defaults to 1.
+        t_size (int, optional): 标注文字尺寸. Defaults to 40.
+        spiral_spacing_length (int, optional): 起始螺旋线横向距离. Defaults to 500.
+        spiral_length (int, optional): 螺旋线长度. Defaults to 6000.
+        spiral_num (int, optional): 螺旋线数量. Defaults to 2.
+
+    Returns:
+        Component: 返回一组螺旋线
+    """
+    t_spiral = gf.Component()
+    wg_cross_section = gf.CrossSection(
+        radius=radius,
+        width=wg_width,
+        offset=0,
+        layer=gf.LAYER.WG,
+        cladding_layers=gf.LAYER.WGCLAD,
+        cladding_offsets=(clad_width,),
+        name="wg",
+        port_names=("o1", "o2"),
     )
-    t_spiral << t_spiral_p
+    wgt = WaveguideTemplate(
+        wg_width=wg_width,
+        clad_width=clad_width,
+        bend_radius=radius,
+        resist="+",
+        fab="ETCH",
+        wg_layer=gf.LAYER.WG[0],
+        wg_datatype=0,
+        clad_layer=gf.LAYER.WGCLAD[0],
+        clad_datatype=0,
+    )
+    g1 = gf.functions.rotate90n(
+        gt_focus(
+            wg_width,
+            clad_width,
+            pitch,
+            duty,
+            alpha,
+            gt_radius,
+            period_num,
+        )
+    )
+    g2 = g1.copy()
+    g1_ref = t_spiral << g1
+    g1_ref.movex(destination=-1375)
+    g2_ref = t_spiral << g2
+    st1 = gf.components.straight(length=st_length, cross_section=wg_cross_section)
+    st2 = gf.components.straight(length=st_length, cross_section=wg_cross_section)
+    st3 = gf.components.straight(
+        length=(io_gap * 3 - 2 * radius), cross_section=wg_cross_section
+    )
+    st1_ref = t_spiral << st1
+    st2_ref = t_spiral << st2
+    st3_ref = t_spiral << st3
+    c1 = gf.components.bend_circular(angle=90, cross_section=wg_cross_section)
+    c2 = gf.components.bend_circular(angle=90, cross_section=wg_cross_section)
+    c1_ref = t_spiral << c1
+    c2_ref = t_spiral << c2
+    st1_ref.connect("o1", destination=g1_ref.ports["o1"])
+    c1_ref.connect("o2", destination=st1_ref.ports["o2"])
+    st3_ref.connect("o1", destination=c1_ref.ports["o1"])
+    c2_ref.connect("o2", destination=st3_ref.ports["o2"])
+    st2_ref.connect("o1", destination=c2_ref.ports["o1"])
+    g2_ref.connect("o1", destination=st2_ref.ports["o2"])
+
+    # 两组螺旋线设置
+    for i in range(1, spiral_num + 1):
+        # 只允许螺旋线水平增加，垂直方向长度和圆角个数不变
+        # 螺旋线高度为300um
+        # 设置螺旋线的波导参数
+        port_y = io_gap * i
+        port_spacing = spiral_spacing_length + spiral_length * (i - 1) / 9.0
+        spiral_temp = pc.Spiral(
+            wgt=wgt,
+            width=port_spacing,
+            length=spiral_length * i,
+            parity=1,
+            port=(0, 0),
+            direction="WEST",
+        )
+        gf_spiral_t = gf.read.from_picwriter(spiral_temp)
+        # 两边直波导参数设置
+        wg_length1 = (3 * io_gap - 2 * radius - port_spacing) / 2
+        st1 = gf.components.straight(length=st_length, cross_section=wg_cross_section)
+        st2 = gf.components.straight(length=st_length, cross_section=wg_cross_section)
+        st3 = gf.components.straight(length=wg_length1, cross_section=wg_cross_section)
+        st4 = gf.components.straight(length=wg_length1, cross_section=wg_cross_section)
+        g1 = gf.functions.rotate90n(
+            gt_focus(
+                wg_width,
+                clad_width,
+                pitch,
+                duty,
+                alpha,
+                gt_radius,
+                period_num,
+            )
+        )
+        g2 = g1.copy()
+        c1 = gf.components.bend_circular(angle=90, cross_section=wg_cross_section)
+        c2 = gf.components.bend_circular(angle=90, cross_section=wg_cross_section)
+        c1_ref = t_spiral << c1
+        c2_ref = t_spiral << c2
+        gf_spiral_ref = t_spiral << gf_spiral_t
+        st1_ref = t_spiral << st1
+        st2_ref = t_spiral << st2
+        st3_ref = t_spiral << st3
+        st4_ref = t_spiral << st4
+        g1_ref = t_spiral << g1
+        g2_ref = t_spiral << g2
+        g1_ref.movex(destination=((-3 * io_gap) / 2 + 1000 * (i - 1)))
+        st1_ref.connect("o1", destination=g1_ref.ports["o1"])
+        c1_ref.connect("o2", destination=st1_ref.ports["o2"])
+        st3_ref.connect("o1", destination=c1_ref.ports["o1"])
+        gf_spiral_ref.connect("o1", destination=st3_ref.ports["o2"])
+        st4_ref.connect("o1", destination=gf_spiral_ref.ports["o2"])
+        c2_ref.connect("o2", destination=st4_ref.ports["o2"])
+        st2_ref.connect("o1", destination=c2_ref.ports["o1"])
+        g2_ref.connect("o1", destination=st2_ref.ports["o2"])
+    t1 = gf.components.text(
+        "%d pt: %2s" % (group_id, pitch),
+        t_size,
+        (-120, 300),
+        layer=gf.LAYER.TEXT,
+    )
+    t_spiral << t1
     return t_spiral
 
 
@@ -562,13 +697,6 @@ def s_bend_coupler(
     top = gf.functions.mirror(component=bottom, p1=point_1, p2=point_2)
     top_ref = c << top
     bottom_ref = c << bottom
-    c = gf.geometry.boolean(
-        c.extract(layers=gf.LAYER.WGCLAD),
-        c.extract(layers=gf.LAYER.WG),
-        "A-B",
-        max_points=199,
-        layer=(0, 0),
-    )
     c.add_port("o1", port=top_ref.ports["o1"], width=width)
     c.add_port("o2", port=bottom_ref.ports["o1"], width=width)
     c.add_port("o3", port=top_ref.ports["o2"], width=width)
@@ -624,13 +752,6 @@ def wg_connect(
     eular_bend_mirror_ref = c << eular_bend_mirror
     eular_bend_mirror_ref.connect(port="o1", destination=l_length_io_ref.ports["o2"])
     s_length_io_ref.connect(port="o1", destination=eular_bend_mirror_ref.ports["o2"])
-    c = gf.geometry.boolean(
-        c.extract(layers=gf.LAYER.WGCLAD),
-        c.extract(layers=gf.LAYER.WG),
-        "A-B",
-        max_points=199,
-        layer=(0, 0),
-    )
     c.add_port("o1", port=l_length_io_ref.ports["o1"])
     c.add_port("o2", port=s_length_io_ref.ports["o2"])
     return c
@@ -746,13 +867,6 @@ def mzi_single(
     gt_br_ref.connect("o1", destination=wg_connect_br_ref.ports["o1"])
     gt_tl_ref.connect("o1", destination=wg_connect_tl_ref.ports["o1"])
     gt_bl_ref.connect("o1", destination=wg_connect_bl_ref.ports["o1"])
-    c << gf.geometry.boolean(
-        c.extract(layers=gf.LAYER.WGCLAD),
-        c.extract(layers=gf.LAYER.WG),
-        "A-B",
-        max_points=199,
-        layer=(0, 0),
-    )
     c.add_port("o1", port=wg_connect_tl_ref.ports["o1"])
     c.add_port("o2", port=wg_connect_bl_ref.ports["o1"])
     c.add_port("o3", port=wg_connect_tr_ref.ports["o1"])
@@ -823,13 +937,6 @@ def mzi_block(
     wg_connect_bl_ref.connect("o2", destination=mzi_ex_ref.ports["o2"])
     wg_connect_tr_ref.connect("o2", destination=mzi_ex_ref.ports["o3"])
     wg_connect_br_ref.connect("o2", destination=mzi_ex_ref.ports["o4"])
-    c << gf.geometry.boolean(
-        c.extract(layers=gf.LAYER.WGCLAD),
-        c.extract(layers=gf.LAYER.WG),
-        "A-B",
-        max_points=199,
-        layer=(0, 0),
-    )
     c.add_port("o1", port=wg_connect_tl_ref.ports["o1"])
     c.add_port("o2", port=wg_connect_bl_ref.ports["o1"])
     c.add_port("o3", port=wg_connect_tr_ref.ports["o1"])
@@ -933,10 +1040,11 @@ def mzi_oneside(
         length=st_length + mzi_sep, cross_section=wg_cross_section
     )
     st3 = gf.components.straight(
-        length=(io_gap - 2 * radius - dc_1.size[0]), cross_section=wg_cross_section
+        length=(io_gap - 2 * radius - dc_1.size[0]) / 2, cross_section=wg_cross_section
     )
     st4 = gf.components.straight(
-        length=(2 * io_gap - 2 * radius - dc_1.size[0]), cross_section=wg_cross_section
+        length=(3 * io_gap - 2 * radius - dc_1.size[0]) / 2,
+        cross_section=wg_cross_section,
     )
     st1_ref = in_1 << st1
     st2_ref = in_2 << st2
@@ -963,19 +1071,358 @@ def mzi_oneside(
         (dc_1_ref.center[0], dc_1_ref.center[1]),
         (dc_1_ref.center[0], dc_1_ref.center[1] - 1),
     )
+    text = gf.components.text(
+        "dc %d" % group_id,
+        t_size,
+        (dc_1.size[0] - 100, dc_1.size[1] + 100),
+        layer=gf.LAYER.TEXT,
+    )
+    c << text
     c << in_1
     c << in_2
     c << in_1_mirror
     c << in_2_mirror
-    c << gf.geometry.boolean(
-        c.extract(layers=gf.LAYER.WGCLAD),
-        c.extract(layers=(gf.LAYER.WG)),
-        operation="A-B",
-        layer=(0, 0),
+    return c
+
+
+@gf.cell
+def mmi2X2(
+    wg_width=0.5,
+    clad_width=3,
+    taper_width=1.1,
+    taper_length=11,
+    mmi_length=53.7,
+    mmi_width=6,
+    wg_seperate=2.1,
+    t_size=40,
+    group_id=1,
+) -> Component:
+    """
+    mmi2X2_block --> 单独的2X2 MMI
+                   mmi_length
+                    <------>
+                    ________
+                   |        |
+                __/          \__
+            o1  __            __  o3
+                  \          /
+                  |         |
+                __/          \__
+            o2  __            __  o4
+                  \          /
+                   |________|
+
+                <->
+            taper_length
+
+
+    Args:
+        wg_width (float, optional): 波导宽度. Defaults to 0.5.
+        clad_width (int, optional): 波导两边宽度. Defaults to 3.
+        taper_width (float, optional): taper宽度. Defaults to 1.1.
+        taper_length (int, optional): taper长度. Defaults to 11.
+        mmi_length (float, optional): MMI长度. Defaults to 53.7.
+        mmi_width (int, optional): MMI宽度. Defaults to 6.
+        wg_seperate (float, optional): 两边波导分离值. Defaults to 2.1.
+        t_size (int, optional): _description_. Defaults to 40.
+        group_id (int, optional): _description_. Defaults to 1.
+
+    Returns:
+        Component: _description_
+    """
+    c = gf.Component("mmi2X2_block")
+    wgt = WaveguideTemplate(
+        wg_width=0,
+        clad_width=clad_width,
+        resist="+",
+        fab="ETCH",
+        wg_layer=gf.LAYER.WG[0],
+        wg_datatype=0,
+        clad_layer=gf.LAYER.WGCLAD[0],
+        clad_datatype=0,
     )
+    wg_cross_section = gf.CrossSection(
+        width=wg_width,
+        offset=0,
+        layer=gf.LAYER.WG,
+        cladding_layers=gf.LAYER.WGCLAD,
+        cladding_offsets=(clad_width,),
+        name="wg",
+        port_names=("o1", "o2"),
+    )
+    pc_mmi = pc.MMI2x2(
+        wgt=wgt,
+        length=mmi_length,
+        width=mmi_width,
+        angle=0,
+        wg_sep=wg_seperate,
+    )
+    mmi_1 = gf.read.from_picwriter(pc_mmi)
+    taper_1 = gf.components.taper(
+        length=taper_length,
+        width1=taper_width,
+        width2=wg_width,
+        cross_section=wg_cross_section,
+    )
+    taper_2 = taper_1.copy()
+    taper_3 = taper_1.copy()
+    taper_4 = taper_1.copy()
+    taper_1_ref = c << taper_1
+    taper_2_ref = c << taper_2
+    taper_3_ref = c << taper_3
+    taper_4_ref = c << taper_4
+    mmi_1_ref = c << mmi_1
+    taper_1_ref.connect("o1", destination=mmi_1_ref.ports["o1"])
+    taper_2_ref.connect("o1", destination=mmi_1_ref.ports["o2"])
+    taper_3_ref.connect("o1", destination=mmi_1_ref.ports["o3"])
+    taper_4_ref.connect("o1", destination=mmi_1_ref.ports["o4"])
+    c.add_port("o1", port=taper_2_ref.ports["o2"])
+    c.add_port("o2", port=taper_1_ref.ports["o2"])
+    c.add_port("o3", port=taper_3_ref.ports["o2"])
+    c.add_port("o4", port=taper_4_ref.ports["o2"])
+    return c
+
+
+@gf.cell
+def mmi2X2_block(
+    wg_width=0.5,
+    clad_width=3,
+    taper_width=1.1,
+    taper_length=11,
+    mmi_length=53.7,
+    mmi_width=6,
+    wg_seperate=2.1,
+    total_length=160,
+    mmi_sep=80,
+    mmi_iolength=0,
+    t_size=40,
+    group_id=1,
+) -> Component:
+    """
+    mmi2X2_block --> 单独的2X2 MMI
+                   mmi_length
+                    <------>
+                    ________
+                   |        |
+                __/          \__
+            o1  __            __  o3
+                  \          /
+                  |         |
+                __/          \__
+            o2  __            __  o4
+                  \          /
+                   |________|
+
+                <->
+            taper_length
+
+
+    Args:
+        wg_width (float, optional): 波导宽度. Defaults to 0.5.
+        clad_width (int, optional): 波导两边宽度. Defaults to 3.
+        taper_width (float, optional): taper宽度. Defaults to 1.1.
+        taper_length (int, optional): taper长度. Defaults to 11.
+        mmi_length (float, optional): MMI长度. Defaults to 53.7.
+        mmi_width (int, optional): MMI宽度. Defaults to 6.
+        wg_seperate (float, optional): 两边波导分离值. Defaults to 2.1.
+        t_size (int, optional): _description_. Defaults to 40.
+        group_id (int, optional): _description_. Defaults to 1.
+
+    Returns:
+        Component: _description_
+    """
+    c = gf.Component("mmi2X2_block")
+    eular_radius = (mmi_sep - wg_seperate) / 4
+    mmi_1 = mmi2X2(
+        wg_width,
+        clad_width,
+        taper_width,
+        taper_length,
+        mmi_length,
+        mmi_width,
+        wg_seperate,
+        t_size,
+        group_id,
+    )
+    mmi_1_ref = c << mmi_1
+    wg_straight_iolength = (
+        total_length - mmi_1.size[0] - 4 * eular_radius - 2 * mmi_iolength
+    ) / 2
+    # tl -> top left ; tr -> top right ; bl -> bottom left ; br -> bottom right
+    wg_connect_tl = wg_connect(
+        wg_width, clad_width, eular_radius, mmi_iolength, wg_straight_iolength
+    )
+    wg_connect_tr = wg_connect_tl.mirror()
+    wg_connect_bl = gf.functions.mirror(component=wg_connect_tl, p1=(1, 0), p2=(0, 0))
+    wg_connect_br = gf.functions.mirror(component=wg_connect_bl)
+    wg_connect_tl_ref = c << wg_connect_tl
+    wg_connect_tr_ref = c << wg_connect_tr
+    wg_connect_bl_ref = c << wg_connect_bl
+    wg_connect_br_ref = c << wg_connect_br
+    wg_connect_tl_ref.connect("o2", destination=mmi_1_ref.ports["o1"])
+    wg_connect_bl_ref.connect("o2", destination=mmi_1_ref.ports["o2"])
+    wg_connect_tr_ref.connect("o2", destination=mmi_1_ref.ports["o3"])
+    wg_connect_br_ref.connect("o2", destination=mmi_1_ref.ports["o4"])
+    c.add_port("o1", port=wg_connect_tl_ref.ports["o1"])
+    c.add_port("o2", port=wg_connect_bl_ref.ports["o1"])
+    c.add_port("o3", port=wg_connect_tr_ref.ports["o1"])
+    c.add_port("o4", port=wg_connect_br_ref.ports["o1"])
+    return c
+
+
+@gf.cell
+def mmi2x2_oneside(
+    wg_width=0.5,
+    clad_width=3,
+    radius=30,
+    io_gap=250,
+    st_length=100,
+    taper_width=1.1,
+    taper_length=11,
+    mmi_length=53.7,
+    mmi_width=6,
+    wg_seperate=2.1,
+    total_length=160,
+    mmi_sep=80,
+    mmi_iolength=0,
+    pitch=0.707,
+    duty=0.528,
+    alpha=np.pi / 7.2,
+    gt_radius=15,
+    period_num=20,
+    t_size=40,
+    group_id=1,
+) -> Component:
+    """
+    mzi_oneside --> 输入和输出光栅在一边的2x2mmi
+
+    Args:
+        wg_width (float, optional): 波导宽度. Defaults to 0.5.
+        clad_width (int, optional): 波导两边宽度. Defaults to 3.
+        radius (int, optional): 波导半径. Defaults to 30.
+        io_gap (int, optional): 输入输出光纤间距. Defaults to 250.
+        st_length (int, optional): 竖向波导长度. Defaults to 100.
+        mzi_sep (int, optional): MZI输出波导上下间距. Defaults to 80.
+        mzi_gap (float, optional): direcrional coupler gap. Defaults to 0.2.
+        mzi_sbend_seq (int, optional): 输出波导上下间距. Defaults to 10.
+        s_bend_length (int, optional): S-bend横向距离. Defaults to 20.
+        coupler_length (float, optional): directinal coupler length. Defaults to 8.8.
+        total_length (int, optional): mzi两端输入和输出长度. Defaults to 160.
+        mzi_iolength (int, optional): 输入和输出的波导长度. Defaults to 5.
+        pitch (float, optional): 光栅周期pitch. Defaults to 0.707.
+        duty (float, optional): 占空比. Defaults to 0.528.
+        alpha (_type_, optional): 光栅扇形角度. Defaults to np.pi/7.2.
+        gt_radius (int, optional): 光栅起始半径（与光栅起始宽度有关）. Defaults to 15.
+        period_num (int, optional): 光栅周期数. Defaults to 20.
+        t_size (int, optional): _description_. Defaults to 40.
+        group_id (int, optional): _description_. Defaults to 1.
+
+    Returns:
+        Component: _description_
+    """
+    c = gf.Component("mmi2x2_oneside")
+    in_1 = gf.Component("in1")
+    in_2 = gf.Component("in2")
+    g1 = gf.functions.rotate90n(
+        gt_focus(
+            wg_width,
+            clad_width,
+            pitch,
+            duty,
+            alpha,
+            gt_radius,
+            period_num,
+        )
+    )
+    g2 = g1.copy()
+    mmi2X2_1 = mmi2X2_block(
+        wg_width,
+        clad_width,
+        taper_width,
+        taper_length,
+        mmi_length,
+        mmi_width,
+        wg_seperate,
+        total_length,
+        mmi_sep,
+        mmi_iolength,
+        t_size,
+        group_id,
+    )
+    wg_cross_section = gf.CrossSection(
+        radius=radius,
+        width=wg_width,
+        offset=0,
+        layer=gf.LAYER.WG,
+        cladding_layers=gf.LAYER.WGCLAD,
+        cladding_offsets=(3.0,),
+        name="wg",
+        port_names=("o1", "o2"),
+    )
+    mmi2X2_1_ref = c << mmi2X2_1
+    g1_ref = in_1 << g1
+    g2_ref = in_2 << g2
+    g2_ref.movex(destination=-250)
+    st1 = gf.components.straight(length=st_length, cross_section=wg_cross_section)
+    st2 = gf.components.straight(
+        length=st_length + mmi_sep, cross_section=wg_cross_section
+    )
+    st3 = gf.components.straight(
+        length=(io_gap - 2 * radius - mmi2X2_1.size[0]) / 2,
+        cross_section=wg_cross_section,
+    )
+    st4 = gf.components.straight(
+        length=(3 * io_gap - 2 * radius - mmi2X2_1.size[0]) / 2,
+        cross_section=wg_cross_section,
+    )
+    st1_ref = in_1 << st1
+    st2_ref = in_2 << st2
+    st1_ref.connect("o1", destination=g1_ref.ports["o1"])
+    st2_ref.connect("o1", destination=g2_ref.ports["o1"])
+    st3_ref = in_1 << st3
+    st4_ref = in_2 << st4
+    c1 = gf.components.bend_circular(angle=-90, cross_section=wg_cross_section)
+    c2 = gf.components.bend_circular(angle=-90, cross_section=wg_cross_section)
+    c1_ref = in_1 << c1
+    c2_ref = in_2 << c2
+    c1_ref.connect("o1", destination=st1_ref.ports["o2"])
+    c2_ref.connect("o1", destination=st2_ref.ports["o2"])
+    st3_ref.connect("o1", destination=c1_ref.ports["o2"])
+    st4_ref.connect("o1", destination=c2_ref.ports["o2"])
+    mmi2X2_1_ref.connect("o2", destination=st3_ref.ports["o2"])
+    in_1_mirror = gf.functions.mirror(
+        in_1,
+        (mmi2X2_1_ref.center[0], mmi2X2_1_ref.center[1]),
+        (mmi2X2_1_ref.center[0], mmi2X2_1_ref.center[1] - 1),
+    )
+    in_2_mirror = gf.functions.mirror(
+        in_2,
+        (mmi2X2_1_ref.center[0], mmi2X2_1_ref.center[1]),
+        (mmi2X2_1_ref.center[0], mmi2X2_1_ref.center[1] - 1),
+    )
+    text = gf.components.text(
+        "mmi %d" % group_id,
+        t_size,
+        (mmi2X2_1.size[0] - 100, mmi2X2_1.size[1] + 100),
+        layer=gf.LAYER.TEXT,
+    )
+    c << text
+    c << in_1
+    c << in_2
+    c << in_1_mirror
+    c << in_2_mirror
     return c
 
 
 if __name__ == "__main__":
-    mzi_instance = mzi_oneside()
-    mzi_instance.show()
+    PDK_test = gf.Component("PDK_test")
+    mmi2X2_instance = spiral_group_oneside(wg_width=0.55)
+    PDK_test << mmi2X2_instance
+    PDK_test << gf.geometry.boolean(
+        PDK_test.extract(layers=gf.LAYER.WGCLAD),
+        PDK_test.extract(layers=gf.LAYER.WG),
+        "A-B",
+        max_points=199,
+        layer=(0, 0),
+    )
+    PDK_test.show()
